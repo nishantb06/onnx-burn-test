@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+burn = { version = "0.19.1", features = ["ndarray"] }
+burn-store = { version = "0.19.1", features = ["burnpack"] }
 
 [build-dependencies]
-burn-import = "~0.19"
+burn-import = "0.19.1"
 
