@@ -6,7 +6,9 @@ This project demonstrates how to import the **all-MiniLM-L6-v2** sentence transf
 
 - **Model**: [all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) - A sentence transformer that maps sentences to 384-dimensional dense vector embeddings
 - **Framework**: [Burn](https://github.com/tracel-ai/burn) - A deep learning framework written in Rust
-- **Conversion**: Uses `burn-import` to convert ONNX model to native Rust code at build time
+- **Conversion**: The ONNX file is converted into a Rust source file using `burn-import` and the weights are stored in `.mpk` (MessagePack) format, then loaded at runtime
+
+[Originial HF onnx model](https://huggingface.co/optimum/all-MiniLM-L6-v2/blob/main/model.onnx) , Need to convert this to use opset 16
 
 ## Project Structure
 
@@ -29,7 +31,7 @@ onnx-burn-test/
 
 ### 1. Build-time ONNX Conversion
 
-The `build.rs` script uses `burn-import` to convert the ONNX model into native Rust code during compilation:
+The `build.rs` script uses `burn-import` to convert the ONNX model during compilation:
 
 ```rust
 use burn_import::onnx::ModelGen;
@@ -42,7 +44,31 @@ fn main() {
 }
 ```
 
-### 2. Model Interface
+This generates two files in `target/debug/build/onnx-burn-test-.../out/model/`:
+- **`allMiniLML6.rs`** - Rust code defining the model structure and forward pass
+- **`allMiniLML6.mpk`** - Model weights in MessagePack binary format (Burn-compatible)
+
+### 2. Runtime Weight Loading
+
+The weights are saved in a binary `.mpk` file during build time and loaded at runtime. In the inference script:
+
+```rust
+// This single line loads the model structure AND the binary weights
+let model: Model<Backend> = Model::default();
+```
+
+Under the hood, `Model::default()` calls:
+
+```rust
+pub fn from_file(file: &str, device: &B::Device) -> Self {
+    let record = burn::record::NamedMpkFileRecorder::<FullPrecisionSettings>::new()
+        .load(file.into(), device)  // Loads the .mpk binary weights
+        .expect("Record file to exist.");
+    Self::new(device).load_record(record)
+}
+```
+
+### 3. Model Interface
 
 The generated model has the following interface:
 
@@ -60,7 +86,7 @@ pub fn forward(
   - `last_hidden_state`: Hidden states for all tokens `[batch_size, seq_len, 384]`
   - `pooler_output`: Sentence embedding `[batch_size, 384]`
 
-### 3. Running Inference
+### 4. Running Inference
 
 The inference script performs a forward pass with sample tokenized input:
 
